@@ -1,53 +1,105 @@
 import os
 import requests
 from web3 import Web3
+from dotenv import load_dotenv
 
-# Config
+load_dotenv()
+
+# === Configuration ===
 RPC_URL = os.getenv("MONAD_RPC_URL")
-POOL_ADDRESS = Web3.to_checksum_address("0x5323821de342c56b80c99fbc7cd725f2da8eb87b")
-TOKEN0_DECIMALS = 6  # USDC = token0 (selon GeckoTerminal)
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-THRESHOLD = float(os.getenv("THRESHOLD_USDC", "10000"))
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+THRESHOLD = float(os.getenv("THRESHOLD_USDC") or "10000")  # default fallback
 
-# Setup Web3
+# Uniswap V2 Pair Contract Address
+PAIR_ADDRESS = Web3.to_checksum_address("0x5323821de342c56b80c99fbc7cd725f2da8eb87b")
+
+# USDC Testnet
+USDC_ADDRESS = "0xf817257fed379853cDe0fa4F97AB987181B1E5Ea"
+
+# Uniswap V2 Pair ABI (only the parts we need)
+UNISWAP_V2_PAIR_ABI = [
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "sender", "type": "address"},
+            {"indexed": False, "name": "amount0In", "type": "uint256"},
+            {"indexed": False, "name": "amount1In", "type": "uint256"},
+            {"indexed": False, "name": "amount0Out", "type": "uint256"},
+            {"indexed": False, "name": "amount1Out", "type": "uint256"},
+            {"indexed": True, "name": "to", "type": "address"},
+        ],
+        "name": "Swap",
+        "type": "event",
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "token0",
+        "outputs": [{"name": "", "type": "address"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "token1",
+        "outputs": [{"name": "", "type": "address"}],
+        "type": "function"
+    }
+]
+
+# === Initialisation Web3 ===
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
-PAIR_ABI = [{
-    "anonymous": False,
-    "inputs": [
-        {"indexed": True, "internalType": "address","name": "sender","type": "address"},
-        {"indexed": False,"internalType": "uint256","name": "amount0In","type": "uint256"},
-        {"indexed": False,"internalType": "uint256","name": "amount1In","type": "uint256"},
-        {"indexed": False,"internalType": "uint256","name": "amount0Out","type": "uint256"},
-        {"indexed": False,"internalType": "uint256","name": "amount1Out","type": "uint256"},
-        {"indexed": True, "internalType": "address","name": "to","type": "address"},
-    ],
-    "name": "Swap","type": "event"
-}]
-pair_contract = w3.eth.contract(address=POOL_ADDRESS, abi=PAIR_ABI)
+pair_contract = w3.eth.contract(address=PAIR_ADDRESS, abi=UNISWAP_V2_PAIR_ABI)
 
-def send_telegram(msg):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
+# === Détermination de la position d’USDC ===
+token0 = pair_contract.functions.token0().call()
+token1 = pair_contract.functions.token1().call()
 
+usdc_is_token0 = token0.lower() == USDC_ADDRESS.lower()
+
+# === Fonction Telegram ===
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {"chat_id": CHAT_ID, "text": message}
+    try:
+        requests.post(url, data=data)
+    except Exception as e:
+        print("Erreur en envoyant sur Telegram:", e)
+
+# === Surveillance des swaps ===
 def check_swaps():
-    send_telegram("Searching whale's transaction on Monad ...")
     latest = w3.eth.block_number
-    logs = pair_contract.events.Swap().get_logs(from_block=latest-100, to_block=latest)
+    from_block = max(latest - 100, 0)
+
+    try:
+        logs = pair_contract.events.Swap().get_logs(from_block=from_block, to_block=latest)
+    except Exception as e:
+        print("Erreur pendant get_logs:", e)
+        return
+
     for e in logs:
-        amt0 = e.args.amount0In + e.args.amount0Out
-        amt1 = e.args.amount1In + e.args.amount1Out
-        usdc_amount = amt0 / (10 ** TOKEN0_DECIMALS)
+        # Sélectionne le bon côté du swap (USDC)
+        if usdc_is_token0:
+            usdc_raw = e.args.amount0In + e.args.amount0Out
+        else:
+            usdc_raw = e.args.amount1In + e.args.amount1Out
+
+        usdc_amount = usdc_raw / 10**6
+
         if usdc_amount >= THRESHOLD:
             tx_hash = e.transactionHash.hex()
             if not tx_hash.startswith("0x"):
                 tx_hash = "0x" + tx_hash
-            msg = (f"💰 Uniswap V2 large swap detected:\n"
-                   f"USDC volume: {usdc_amount:.2f}\n"
-                   f"Tx: https://testnet.monadexplorer.com/tx/{tx_hash}")
+
+            msg = (
+                f"🐋 Uniswap V2 large swap detected:\n"
+                f"USDC volume: {usdc_amount:.2f}\n"
+                f"Tx: https://testnet.monadexplorer.com/tx/{tx_hash}"
+            )
             print(msg)
             send_telegram(msg)
-    send_telegram("End of the search")
 
+# === Main ===
 if __name__ == "__main__":
     check_swaps()
