@@ -69,7 +69,7 @@ def send_telegram(message):
 def check_swaps():
     send_telegram("Searching whale's transaction on Monad ...")
     latest = w3.eth.block_number
-    from_block = max(latest - 200, 0)
+    from_block = max(latest - 100, 0)
 
     try:
         logs = pair_contract.events.Swap().get_logs(from_block=from_block, to_block=latest)
