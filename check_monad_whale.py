@@ -66,6 +66,7 @@ def send_telegram(message):
 
 # === Surveillance des swaps ===
 def check_swaps():
+    send_telegram("Searching whale's transaction on Monad ...")
     latest = w3.eth.block_number
     from_block = max(latest - 100, 0)
 
@@ -96,6 +97,7 @@ def check_swaps():
             )
             print(msg)
             send_telegram(msg)
+    send_telegram("End of the search")
 
 # === Main ===
 if __name__ == "__main__":
