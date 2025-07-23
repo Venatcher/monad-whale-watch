@@ -1,21 +1,29 @@
-name: Watch Large V2 Swaps
+name: Watch Large Swaps
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
   monitor-v2:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: python-version: "3.11"
-      - run: pip install web3 requests
-      - run: python check_monad_whale.py
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with: 
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install web3 requests
+
+      - name: Run swap monitor
         env:
           MONAD_RPC_URL: ${{ secrets.MONAD_RPC_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           THRESHOLD_USDC: ${{ secrets.THRESHOLD_USDC }}
+        run: python check_monad_whale.py
