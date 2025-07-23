@@ -33,16 +33,18 @@ def send_telegram(msg):
 def check_swaps():
     send_telegram("Searching whale's transaction on Monad ...")
     latest = w3.eth.block_number
-    logs = pair_contract.events.Swap().get_logs(from_block=latest-50, to_block=latest)
+    logs = pair_contract.events.Swap().get_logs(from_block=latest-100, to_block=latest)
     for e in logs:
         amt0 = e.args.amount0In + e.args.amount0Out
         amt1 = e.args.amount1In + e.args.amount1Out
         usdc_amount = amt0 / (10 ** TOKEN0_DECIMALS)
         if usdc_amount >= THRESHOLD:
-            tx = e.transactionHash.hex()
+            tx_hash = e.transactionHash.hex()
+            if not tx_hash.startswith("0x"):
+                tx_hash = "0x" + tx_hash
             msg = (f"💰 Uniswap V2 large swap detected:\n"
                    f"USDC volume: {usdc_amount:.2f}\n"
-                   f"Tx: https://testnet.monadexplorer.com/tx/{tx}")
+                   f"Tx: https://testnet.monadexplorer.com/tx/{tx_hash}")
             print(msg)
             send_telegram(msg)
     send_telegram("End of the search")
