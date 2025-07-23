@@ -11,8 +11,9 @@ THRESHOLD = float(os.getenv("THRESHOLD_USDC") or "10000")  # default fallback
 # Uniswap V2 Pair Contract Address
 PAIR_ADDRESS = Web3.to_checksum_address("0x5323821de342c56b80c99fbc7cd725f2da8eb87b")
 
-# USDC Testnet
+# Testnet Tokens
 USDC_ADDRESS = "0xf817257fed379853cDe0fa4F97AB987181B1E5Ea"
+WMON_ADDRESS = "0x760AfE86e5de5fa0Ee542fc7B7B713e1c5425701"
 
 # Uniswap V2 Pair ABI (only the parts we need)
 UNISWAP_V2_PAIR_ABI = [
@@ -77,13 +78,25 @@ def check_swaps():
         return
 
     for e in logs:
-        # Sélectionne le bon côté du swap (USDC)
-        if usdc_is_token0:
-            usdc_raw = e.args.amount0In + e.args.amount0Out
-        else:
-            usdc_raw = e.args.amount1In + e.args.amount1Out
-
+        # USDC volume
+        usdc_raw = (
+            e.args.amount0In + e.args.amount0Out
+            if usdc_is_token0 else
+            e.args.amount1In + e.args.amount1Out
+        )
         usdc_amount = usdc_raw / 10**6
+
+        # WMON volume in/out
+        wmon_in = e.args.amount1In if usdc_is_token0 else e.args.amount0In
+        wmon_out = e.args.amount1Out if usdc_is_token0 else e.args.amount0Out
+
+        # Détection BUY / SELL
+        if wmon_in > 0 and wmon_out == 0:
+            action = "SELL WMON"
+        elif wmon_out > 0 and wmon_in == 0:
+            action = "BUY WMON"
+        else:
+            action = "SWAP"
 
         if usdc_amount >= THRESHOLD:
             tx_hash = e.transactionHash.hex()
@@ -92,6 +105,7 @@ def check_swaps():
 
             msg = (
                 f"🐋 Uniswap V2 large swap detected:\n"
+                f"Action: {action}\n"
                 f"USDC volume: {usdc_amount:.2f}\n"
                 f"Tx: https://testnet.monadexplorer.com/tx/{tx_hash}"
             )
