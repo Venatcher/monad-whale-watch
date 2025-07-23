@@ -31,9 +31,9 @@ def send_telegram(msg):
     requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
 
 def check_swaps():
-    send_telegram("Search whale transaction on Monad ...")
+    send_telegram("Searching whale's transaction on Monad ...")
     latest = w3.eth.block_number
-    logs = pair_contract.events.Swap().get_logs(fromBlock=latest-100, toBlock=latest)
+    logs = pair_contract.events.Swap().get_logs(from_block=latest-50, to_block=latest)
     for e in logs:
         amt0 = e.args.amount0In + e.args.amount0Out
         amt1 = e.args.amount1In + e.args.amount1Out
